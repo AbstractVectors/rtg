@@ -30,3 +30,29 @@
 *.exe
 *.out
 *.app
+
+# IDE
+.idea
+.idea/
+.idea/*
+.vscode
+.vscode/*
+
+# build
+build
+build/
+cmake-build-debug
+cmake-build-debug/
+
+# ready_trader_go
+ready_trader_go/__pycache__
+ready_trader_go/__pycache__/
+ready_trader_go/hud
+ready_trader_go/hud/
+
+# autotrader
+autotrader
+autotrader.log
+exchange.log
+info.dat
+*.csv
