@@ -110,6 +110,7 @@ private:
 
 class OrderBook {
     public:
+        bool roundFlag = 0;
         std::map<ul, ul> spotAsks, futAsks;
         class descComp {
             public:
@@ -119,9 +120,14 @@ class OrderBook {
         };
         enum class Spread : unsigned char {BID, ASK};
         std::map<ul, ul, descComp> spotBids, futBids;
-        std::map<ll, ll> bidSpreads, askSpreads;                            // Holds 2 times the actual spread to remove decimals
-        std::queue<std::pair<ll, ll>> bidSpreadsQueue, askSpreadsQueue;     // Holds 2 times the actual spread to remove decimals
+        // For ETF
+        ll midPrice;
+        std::map<ll, ll> bidSpreads, askSpreads;            
+        std::queue<std::pair<ll, ll>> bidSpreadsQueue, askSpreadsQueue;
         std::array<ll, 100> bidSpreadPrefixSum, askSpreadPrefixSum;
+        std::unordered_map<ll, ll> bidKeyIndex, askKeyIndex;
+        // For FUTURE
+        double volumeWeightedBidSpread, volumeWeightedAskSpread;
 
         void updateOnOrderBook(ReadyTraderGo::Instrument instrument,
             const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& askPrices,
@@ -135,13 +141,16 @@ class OrderBook {
             const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidPrices,
             const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidVolumes);
 
-        void updateHistSpread(ReadyTraderGo::Instrument instrument,
+        void updateHistSpreads(ReadyTraderGo::Instrument instrument,
             const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& askPrices,
             const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& askVolumes,
             const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidPrices,
             const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidVolumes);
         
-        void calcOptimalSpread(Spread side);
-};
+        ll calcOptimalSpread(Spread side);
 
+    private:
+        ll ternarySearch(double hedgingCost, std::map<ll, ll>& spreads, std::array<ll, 100>& spreadPrefixSum, std::unordered_map<ll, ll>& spreadIndex) const;
+        double calcSpreadEV(ll spread, double hedgingCost, std::map<ll, ll>& spreads, std::array<ll, 100>& spreadPrefixSum, std::unordered_map<ll, ll>& spreadIndex) const;
+};
 #endif //CPPREADY_TRADER_GO_AUTOTRADER_H
