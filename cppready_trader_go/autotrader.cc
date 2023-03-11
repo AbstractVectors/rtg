@@ -160,3 +160,94 @@ void AutoTrader::TradeTicksMessageHandler(Instrument instrument,
                                    << "; bid prices: " << bidPrices[0]
                                    << "; bid volumes: " << bidVolumes[0];
 }
+
+
+void OrderBook::updateOnOrderBook(ReadyTraderGo::Instrument instrument,
+                                const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& askPrices,
+                                const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& askVolumes,
+                                const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidPrices,
+                                const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidVolumes) {
+    if (instrument == ReadyTraderGo::Instrument::FUTURE) {
+        auto askIt = futAsks.upper_bound(askPrices[0]);
+        futAsks.erase(futAsks.begin(), askIt);
+        auto bidIt = futBids.upper_bound(bidPrices[0]);
+        futBids.erase(futBids.begin(), bidIt);
+        for (int i = 0; i < askPrices.size(); i++) {
+            futAsks[askPrices[i]] = askVolumes[i];
+        }
+        for (int i = 0; i < bidPrices.size(); i++) {
+            futBids[bidPrices[i]] = bidVolumes[i];
+        }
+    } else if (instrument == ReadyTraderGo::Instrument::ETF) {
+        auto askIt = spotAsks.upper_bound(askPrices[0]);
+        spotAsks.erase(spotAsks.begin(), askIt);
+        auto bidIt = spotBids.upper_bound(bidPrices[0]) ;
+        spotBids.erase(spotBids.begin(), bidIt);
+        for (int i = 0; i < askPrices.size(); i++) {
+            spotAsks[askPrices[i]] = askVolumes[i];
+        }
+        for (int i = 0; i < bidPrices.size(); i++) {
+            spotBids[bidPrices[i]] = bidVolumes[i];
+        }
+    }
+}
+
+/*
+void OrderBook::updateOnTick(ReadyTraderGo::Instrument instrument,
+                          const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& askPrices,
+                          const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& askVolumes,
+                          const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidPrices,
+                          const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidVolumes) {
+    if (instrument == ReadyTraderGo::Instrument::FUTURE) {
+
+        for (int i = 0; i < askPrices.size(); i++) {
+            
+        }
+    } else if (instrument == ReadyTraderGo::Instrument::ETF) {
+        
+    }
+}
+*/
+
+void OrderBook::updateHistSpread(ReadyTraderGo::Instrument instrument,
+            const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& askPrices,
+            const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& askVolumes,
+            const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidPrices,
+            const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidVolumes) {
+    // Update spreads
+    ll bidAskSpread = (ll) askPrices[0] - (ll) bidPrices[0];
+    ll midPrice = 2 * bidPrices[0] + bidAskSpread;
+    for (int i = 0; i < ReadyTraderGo::TOP_LEVEL_COUNT; i++) {
+        if (askPrices[i]) askSpreads[2 * (ll) askPrices[i] - midPrice] += askVolumes[i];
+        askSpreadsQueue.push({2 * (ll) askPrices[i] - midPrice, (ll) askVolumes[i]});
+        if (bidPrices[i]) bidSpreads[midPrice - 2 * (ll) bidPrices[i]] += bidVolumes[i];
+        bidSpreadsQueue.push({midPrice - 2 * (ll) bidPrices[i], (ll) bidVolumes[i]});
+    }
+    while (askSpreadsQueue.size() > 100) {
+        std::pair<ll, ll> removed = askSpreadsQueue.front();
+        askSpreadsQueue.pop();
+        askSpreads[removed.first] -= removed.second;
+    }
+    while (bidSpreadsQueue.size() > 100) {
+        std::pair<ll, ll> removed = bidSpreadsQueue.front();
+        bidSpreadsQueue.pop();
+        bidSpreads[removed.first] -= removed.second;
+    }
+
+    // Calculate prefix sum
+    askSpreadPrefixSum[0] = askSpreads.begin()->second, bidSpreadPrefixSum[0] = bidSpreads.begin()->second;
+    auto askIt = askSpreads.begin();
+    askIt++;
+    for (int i = 1; i < askSpreads.size(); i++, askIt++) {
+        askSpreadPrefixSum[i] = askSpreadPrefixSum[i-1] + askIt->second;
+    }
+    auto bidIt = bidSpreads.begin();
+    bidIt++;
+    for (int i = 1; i < bidSpreads.size(); i++, bidIt++) {
+        bidSpreadPrefixSum[i] = bidSpreadPrefixSum[i-1] + bidIt->second;
+    }
+}
+
+void OrderBook::calcOptimalSpread(Spread side) {
+    
+}

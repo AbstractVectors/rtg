@@ -22,11 +22,15 @@
 #include <memory>
 #include <string>
 #include <unordered_set>
+#include <bits/stdc++.h>
 
 #include <boost/asio/io_context.hpp>
 
 #include <ready_trader_go/baseautotrader.h>
 #include <ready_trader_go/types.h>
+
+#define ul unsigned long
+#define ll long long
 
 class AutoTrader : public ReadyTraderGo::BaseAutoTrader
 {
@@ -102,6 +106,42 @@ private:
     signed long mPosition = 0;
     std::unordered_set<unsigned long> mAsks;
     std::unordered_set<unsigned long> mBids;
+};
+
+class OrderBook {
+    public:
+        std::map<ul, ul> spotAsks, futAsks;
+        class descComp {
+            public:
+                bool operator()(ul a, ul b) const {
+                    return a > b;
+                }
+        };
+        enum class Spread : unsigned char {BID, ASK};
+        std::map<ul, ul, descComp> spotBids, futBids;
+        std::map<ll, ll> bidSpreads, askSpreads;                            // Holds 2 times the actual spread to remove decimals
+        std::queue<std::pair<ll, ll>> bidSpreadsQueue, askSpreadsQueue;     // Holds 2 times the actual spread to remove decimals
+        std::array<ll, 100> bidSpreadPrefixSum, askSpreadPrefixSum;
+
+        void updateOnOrderBook(ReadyTraderGo::Instrument instrument,
+            const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& askPrices,
+            const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& askVolumes,
+            const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidPrices,
+            const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidVolumes); 
+
+        void updateOnTick(ReadyTraderGo::Instrument instrument,
+            const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& askPrices,
+            const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& askVolumes,
+            const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidPrices,
+            const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidVolumes);
+
+        void updateHistSpread(ReadyTraderGo::Instrument instrument,
+            const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& askPrices,
+            const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& askVolumes,
+            const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidPrices,
+            const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidVolumes);
+        
+        void calcOptimalSpread(Spread side);
 };
 
 #endif //CPPREADY_TRADER_GO_AUTOTRADER_H
