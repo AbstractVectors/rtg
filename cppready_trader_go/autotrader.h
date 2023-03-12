@@ -26,8 +26,6 @@
 
 #include <boost/asio/io_context.hpp>
 #include <boost/asio.hpp>
-#include <boost/thread.hpp>
-#include <boost/bimap.hpp>
 
 #include <ready_trader_go/baseautotrader.h>
 #include <ready_trader_go/types.h>
@@ -124,12 +122,12 @@ class OrderBook {
         enum class Spread : unsigned char {BID, ASK};
         std::map<ul, ul, descComp> spotBids, futBids;
         // For ETF
-        ll midPrice;
+        ll midPrice = -1;
         std::map<ll, ll> bidSpreads, askSpreads;            
         std::queue<std::pair<ll, ll>> bidSpreadsQueue, askSpreadsQueue;
         std::array<ll, 100> bidSpreadPrefixSum, askSpreadPrefixSum;
         // For FUTURE
-        double volumeWeightedBidSpread, volumeWeightedAskSpread;
+        double volumeWeightedBidSpread=500, volumeWeightedAskSpread=500;
 
         void updateOnOrderBook(ReadyTraderGo::Instrument instrument,
             const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& askPrices,
@@ -156,22 +154,5 @@ class OrderBook {
         double calcSpreadEV(ll spread, double hedgingCost, ll totalVolume, ll excludedVolume) const;
 };
 
-class Executor {
-
-};
-
-class Timer {
-public:
-    Timer(Executor& executor);
-    ~Timer();
-
-private:
-    void timer_handler(const boost::system::error_code& error);
-
-    Executor& executor;
-    boost::shared_ptr<boost::asio::io_context> io_context_;
-    boost::shared_ptr<boost::asio::deadline_timer> timer_;
-    boost::shared_ptr<boost::thread> thread_;
-};
 
 #endif //CPPREADY_TRADER_GO_AUTOTRADER_H

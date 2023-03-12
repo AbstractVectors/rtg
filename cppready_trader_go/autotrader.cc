@@ -86,22 +86,41 @@ void AutoTrader::OrderBookMessageHandler(Instrument instrument,
     for (int i = 0; i < ReadyTraderGo::TOP_LEVEL_COUNT; i++) {
         RLOG(LG_AT, LogLevel::LL_INFO) << bidVolumes[i] << ", ";
     }
+
     orderbook.updateHistSpreads(instrument,
         askPrices,
         askVolumes,
         bidPrices,
         bidVolumes);
-    ll ask = orderbook.calcOptimalSpread(OrderBook::Spread::ASK) + orderbook.midPrice;
-    mAskId = mNextMessageId++;
-    mAskPrice = ask;
-    SendInsertOrder(mAskId, Side::SELL, ask, LOT_SIZE, Lifespan::GOOD_FOR_DAY);
-    mAsks.emplace(mAskId);
 
-    ll bid = orderbook.calcOptimalSpread(OrderBook::Spread::BID) + orderbook.midPrice;
-    mBidId = mNextMessageId++;
-    mBidPrice = bid;
-    SendInsertOrder(mNextMessageId++, Side::BUY, bid, LOT_SIZE, Lifespan::GOOD_FOR_DAY);
-    mBids.emplace(mBidId);
+    if (instrument == ReadyTraderGo::Instrument::ETF && orderbook.midPrice != -1) {
+        ll ask = orderbook.calcOptimalSpread(OrderBook::Spread::ASK) + orderbook.midPrice;
+        ask = (ask / 100) * 100;
+        ll bid = orderbook.midPrice - orderbook.calcOptimalSpread(OrderBook::Spread::BID);
+        bid = (bid / 100) * 100;
+        std::cout << orderbook.midPrice << " " << bid << " " << ask << std::endl;
+        if (mAskId != 0 && ask != 0 && ask != mAskPrice) {
+            SendCancelOrder(mAskId);
+            mAskId = 0;
+        }
+        if (mBidId != 0 && bid != 0 && bid != mBidPrice) {
+            SendCancelOrder(mBidId);
+            mBidId = 0;
+        }
+        
+        if (mAskId == 0 && ask != 0 && mPosition > -POSITION_LIMIT) {
+            mAskId = mNextMessageId++;
+            mAskPrice = ask;
+            SendInsertOrder(mAskId, Side::SELL, ask, LOT_SIZE, Lifespan::GOOD_FOR_DAY);
+            mAsks.emplace(mAskId);
+        }
+        if (mBidId == 0 && bid != 0 && mPosition < POSITION_LIMIT) {
+            mBidId = mNextMessageId++;
+            mBidPrice = bid;
+            SendInsertOrder(mBidId, Side::BUY, bid, LOT_SIZE, Lifespan::GOOD_FOR_DAY);
+            mBids.emplace(mBidId);
+        }
+    }
 }
 
 void AutoTrader::OrderFilledMessageHandler(unsigned long clientOrderId,
@@ -150,39 +169,17 @@ void AutoTrader::TradeTicksMessageHandler(Instrument instrument,
                                           const std::array<unsigned long, TOP_LEVEL_COUNT>& bidPrices,
                                           const std::array<unsigned long, TOP_LEVEL_COUNT>& bidVolumes)
 {
-    RLOG(LG_AT, LogLevel::LL_INFO) << "trade ticks received for " << instrument << " instrument"
-                                   << ": ask prices: ";
-    for (int i = 0; i < ReadyTraderGo::TOP_LEVEL_COUNT; i++) {
-        RLOG(LG_AT, LogLevel::LL_INFO) << askPrices[i] << ", ";
-    }
-    RLOG(LG_AT, LogLevel::LL_INFO) << "; ask volumes: ";
-    for (int i = 0; i < ReadyTraderGo::TOP_LEVEL_COUNT; i++) {
-        RLOG(LG_AT, LogLevel::LL_INFO) << askVolumes[i] << ", ";
-    }
-    RLOG(LG_AT, LogLevel::LL_INFO) << "; bid prices: ";
-    for (int i = 0; i < ReadyTraderGo::TOP_LEVEL_COUNT; i++) {
-        RLOG(LG_AT, LogLevel::LL_INFO) << bidPrices[i] << ", ";
-    }
-    RLOG(LG_AT, LogLevel::LL_INFO) << "; bid volumes: ";
-    for (int i = 0; i < ReadyTraderGo::TOP_LEVEL_COUNT; i++) {
-        RLOG(LG_AT, LogLevel::LL_INFO) << bidVolumes[i] << ", ";
-    }
+    RLOG(LG_AT, LogLevel::LL_INFO) << "order book received for " << instrument << " instrument"
+                                   << ": ask prices: " << askPrices[0]
+                                   << "; ask volumes: " << askVolumes[0]
+                                   << "; bid prices: " << bidPrices[0]
+                                   << "; bid volumes: " << bidVolumes[0];
+
     orderbook.updateHistSpreads(instrument,
         askPrices,
         askVolumes,
         bidPrices,
         bidVolumes);
-    ll ask = orderbook.calcOptimalSpread(OrderBook::Spread::ASK) + orderbook.midPrice;
-    mAskId = mNextMessageId++;
-    mAskPrice = ask;
-    SendInsertOrder(mAskId, Side::SELL, ask, LOT_SIZE, Lifespan::GOOD_FOR_DAY);
-    mAsks.emplace(mAskId);
-
-    ll bid = orderbook.calcOptimalSpread(OrderBook::Spread::BID) + orderbook.midPrice;
-    mBidId = mNextMessageId++;
-    mBidPrice = bid;
-    SendInsertOrder(mNextMessageId++, Side::BUY, bid, LOT_SIZE, Lifespan::GOOD_FOR_DAY);
-    mBids.emplace(mBidId);
 }
 
 
@@ -240,9 +237,11 @@ void OrderBook::updateHistSpreads(ReadyTraderGo::Instrument instrument,
             const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidVolumes) {
     if (instrument == ReadyTraderGo::Instrument::ETF) {
         // Update spreads
-        ll bidAskSpread = (ll) askPrices[0] - (ll) bidPrices[0];
-        roundFlag = bidAskSpread % 2;
-        midPrice = bidPrices[0] + bidAskSpread / 2;
+        std::cout << "ETFuck you" << std::endl;
+        if (askPrices[0] && bidPrices[0]) {
+            ll bidAskSpread = (ll) askPrices[0] - (ll) bidPrices[0];
+            midPrice = bidPrices[0] + bidAskSpread / 2;
+        }
         for (int i = 0; i < ReadyTraderGo::TOP_LEVEL_COUNT; i++) {
             if (askPrices[i]) {
                 askSpreads[(ll) askPrices[i] - midPrice] += askVolumes[i];
@@ -264,18 +263,23 @@ void OrderBook::updateHistSpreads(ReadyTraderGo::Instrument instrument,
             bidSpreads[removed.first] -= removed.second;
         }
         // Calculate prefix sum
-        askSpreadPrefixSum[0] = askSpreads.begin()->second, bidSpreadPrefixSum[0] = bidSpreads.begin()->second;
-        auto askIt = askSpreads.begin();
-        askIt++;
-        for (int i = 1; i < askSpreads.size(); i++, askIt++) {
-            askSpreadPrefixSum[i] = askSpreadPrefixSum[i-1] + askIt->second;
+        if (askSpreads.size()) {
+            askSpreadPrefixSum[0] = askSpreads.begin()->second, bidSpreadPrefixSum[0] = bidSpreads.begin()->second;
+            auto askIt = askSpreads.begin();
+            askIt++;
+            for (int i = 1; i < askSpreads.size(); i++, askIt++) {
+                askSpreadPrefixSum[i] = askSpreadPrefixSum[i-1] + askIt->second;
+            }
         }
-        auto bidIt = bidSpreads.begin();
-        bidIt++;
-        for (int i = 1; i < bidSpreads.size(); i++, bidIt++) {
-            bidSpreadPrefixSum[i] = bidSpreadPrefixSum[i-1] + bidIt->second;
+        if (bidSpreads.size()) {
+            auto bidIt = bidSpreads.begin();
+            bidIt++;
+            for (int i = 1; i < bidSpreads.size(); i++, bidIt++) {
+                bidSpreadPrefixSum[i] = bidSpreadPrefixSum[i-1] + bidIt->second;
+            }
         }
     } else if (instrument == ReadyTraderGo::Instrument::FUTURE) {
+        std::cout << "FutureDick" << std::endl;
         double askSpreadSum = 0.0, bidSpreadSum = 0.0;
         double askVolume = 0, bidVolume = 0;
         ll bidAskSpread = (ll) askPrices[0] - (ll) bidPrices[0];
@@ -286,15 +290,17 @@ void OrderBook::updateHistSpreads(ReadyTraderGo::Instrument instrument,
             bidSpreadSum += (midPrice - bidPrices[i]) * bidVolumes[i];
             bidVolume += bidVolumes[i];
         }
-        volumeWeightedAskSpread = askSpreadSum / askVolume;
-        volumeWeightedBidSpread = bidSpreadSum / bidVolume;
+        if (askVolume) volumeWeightedAskSpread = askSpreadSum / askVolume;
+        if (bidVolume) volumeWeightedBidSpread = bidSpreadSum / bidVolume;
     }
 }
 
 ll OrderBook::calcOptimalSpread(Spread side) {
     if (side == Spread::ASK) {
+        std::cout << "ask: ";
         return search(volumeWeightedAskSpread, askSpreads, askSpreadPrefixSum);
     } else if (side == Spread::BID) {
+        std::cout << "bid: ";
         return search(volumeWeightedBidSpread, bidSpreads, bidSpreadPrefixSum);
     } else {
         return -1;
@@ -302,7 +308,9 @@ ll OrderBook::calcOptimalSpread(Spread side) {
 }
 
 ll OrderBook::search(double hedgingCost, std::map<ll, ll>& spreads, std::array<ll, 100>& spreadPrefixSum) const {
-    if (!spreads.size()) return -1;
+    if (!spreads.size()) {
+        return 20000;
+    }
     auto it = spreads.begin();
     ll totalVolume = spreadPrefixSum[spreads.size() - 1];
     double maxEV = calcSpreadEV(it->first, hedgingCost, totalVolume, 0);
@@ -313,7 +321,7 @@ ll OrderBook::search(double hedgingCost, std::map<ll, ll>& spreads, std::array<l
         if (newEV < maxEV) break;
         maxEV = newEV;
     }
-    std::cout << maxEV << std::endl;
+    std::cout << maxEV << " " << it->first << std::endl;
     return (--it)->first;
 }
 
