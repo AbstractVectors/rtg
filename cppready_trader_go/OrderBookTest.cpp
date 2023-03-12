@@ -129,7 +129,7 @@ void printQueues(std::queue<std::pair<T, U>> q1, std::queue<std::pair<T, U>> q2)
 
 
 int main() {
-    std::cout << "I like guys" << std::endl;
+    std::cout << "I like men" << std::endl;
 
     // Test init orderbook maps
     std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT> askPrices = {69, 70, 71, 72, 73},
@@ -178,8 +178,6 @@ int main() {
         orderBookTest.bidSpreads[6850 - bidPrices[i]] += bidVolumes[i];
         orderBookTest.askSpreadsQueue.push({askPrices[i] - 6850, askVolumes[i]});
         orderBookTest.bidSpreadsQueue.push({6850 - bidPrices[i], bidVolumes[i]});
-        orderBookTest.askKeyIndex[askPrices[i] - 6850] = i;
-        orderBookTest.bidKeyIndex[6850 - bidPrices[i]] = i;
     }
     orderBookTest.askSpreadPrefixSum = {200, 500, 600, 1200, 1500}, orderBookTest.bidSpreadPrefixSum = {200, 400, 700, 800, 1000};
     assert(arraysEqual(orderBookActual.askSpreadPrefixSum, orderBookTest.askSpreadPrefixSum));
@@ -224,16 +222,19 @@ int main() {
         {0, 0, 0, 0, 0},
         {0, 0, 0, 0, 0},
         {0, 0, 0, 0, 0});
-    for (int i = 0; i < 100; i++) {
-        orderBookTest.askKeyIndex[50 + i * 100] = i;
-        orderBookTest.bidKeyIndex[50 + i * 100] = i;
-    }
     assert(arraysEqual(orderBookActual.askSpreadPrefixSum, orderBookTest.askSpreadPrefixSum));
     assert(arraysEqual(orderBookActual.bidSpreadPrefixSum, orderBookTest.bidSpreadPrefixSum));
     assert(mapsEqual(orderBookActual.askSpreads, orderBookTest.askSpreads));
     assert(mapsEqual(orderBookActual.bidSpreads, orderBookTest.bidSpreads));
-    assert(hashMapsEqual(orderBookActual.askKeyIndex, orderBookTest.askKeyIndex));
-    assert(hashMapsEqual(orderBookActual.bidKeyIndex, orderBookTest.bidKeyIndex));
     assert(queuesEqual(orderBookActual.askSpreadsQueue, orderBookTest.askSpreadsQueue));
     assert(queuesEqual(orderBookActual.bidSpreadsQueue, orderBookTest.bidSpreadsQueue));
+
+    askPrices = {7100, 7300, 7400, 7500, 7700}, askVolumes = {100, 200, 100, 100, 300}, bidPrices = {6600, 6500, 6400, 6300, 6100}, bidVolumes = {100, 200, 300, 100, 200};
+    testUpdateSpreads(ReadyTraderGo::Instrument::FUTURE,
+                      askPrices,
+                      askVolumes,
+                      bidPrices,
+                      bidVolumes);
+    assert(612.5 - orderBookActual.volumeWeightedAskSpread < 1e-9);
+    assert(483.3333333333333333 - orderBookActual.volumeWeightedBidSpread < 1e-9);
 }

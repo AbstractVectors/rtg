@@ -1,6 +1,4 @@
 #include <bits/stdc++.h>
-// #include <cassert.h>
-include <bits/stdc++.h>
 #include <cassert>
 #include "autotrader.h"
 #include <ready_trader_go/types.h>
@@ -64,25 +62,25 @@ void ternaryTest() {
 }
 */
 void testCalculateEv() {
-	std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT> 
 	// Spread - 5.0	
 	// Hedging Cost
-	map<ll, ll> spreads; 
-	spreads[2] = 100;
-	spreads[3] = 100;	
-	spreads[4] = 100;
-	spreads[5]  = 100;
-	 std::array<ll, 100> spreadPrefixSum;
-	spreadPrefixSum[0] = 100; 
+    OrderBook orderbookTest;
+    orderbookTest.midPrice = 5000;
+	map<ll, ll> spreads;
+	spreads[20] = 100;
+	spreads[30] = 100;
+	spreads[40] = 100;
+	spreads[50]  = 100;
+    std::array<ll, 100> spreadPrefixSum;
+	spreadPrefixSum[0] = 100;
 	spreadPrefixSum[1] = 200;
 	spreadPrefixSum[2] = 300;
 	spreadPrefixSum[3] = 400;
-	unordered_map<ll, ll> spreadIndex;
-	spreadIndex[2] = 0;
-	spreadIndex[3] = 1;
-	spreadIndex[4] = 2;
-	spreadIndex[5] = 3;
-	cout << OrderBook::calcSpreadEv(5, 3, spreads, spreadPrefixSum, spreadIndex) << endl;
+    orderbookTest.askSpreads = spreads, orderbookTest.askSpreadPrefixSum = spreadPrefixSum;
+	cout << 0 << " "<< orderbookTest.calcSpreadEV(20, 100, 400, 0) << endl;
+    for (int i = 1; i < 4; i++)
+	    cout << i << " "<< orderbookTest.calcSpreadEV(i * 10 + 20, 100, 400, spreadPrefixSum[i - 1]) << endl;
+    cout << orderbookTest.calcOptimalSpread(OrderBook::Spread::ASK) << endl;
 }
 
 int main(void) {

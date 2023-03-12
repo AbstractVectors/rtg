@@ -25,6 +25,9 @@
 #include <bits/stdc++.h>
 
 #include <boost/asio/io_context.hpp>
+#include <boost/asio.hpp>
+#include <boost/thread.hpp>
+#include <boost/bimap.hpp>
 
 #include <ready_trader_go/baseautotrader.h>
 #include <ready_trader_go/types.h>
@@ -125,7 +128,6 @@ class OrderBook {
         std::map<ll, ll> bidSpreads, askSpreads;            
         std::queue<std::pair<ll, ll>> bidSpreadsQueue, askSpreadsQueue;
         std::array<ll, 100> bidSpreadPrefixSum, askSpreadPrefixSum;
-        std::unordered_map<ll, ll> bidKeyIndex, askKeyIndex;
         // For FUTURE
         double volumeWeightedBidSpread, volumeWeightedAskSpread;
 
@@ -149,8 +151,27 @@ class OrderBook {
         
         ll calcOptimalSpread(Spread side);
 
-    private:
-        ll ternarySearch(double hedgingCost, std::map<ll, ll>& spreads, std::array<ll, 100>& spreadPrefixSum, std::unordered_map<ll, ll>& spreadIndex) const;
-        double calcSpreadEV(ll spread, double hedgingCost, std::map<ll, ll>& spreads, std::array<ll, 100>& spreadPrefixSum, std::unordered_map<ll, ll>& spreadIndex) const;
+        ll search(double hedgingCost, std::map<ll, ll>& spreads, std::array<ll, 100>& spreadPrefixSum) const;
+
+        double calcSpreadEV(ll spread, double hedgingCost, ll totalVolume, ll excludedVolume) const;
 };
+
+class Executor {
+
+};
+
+class Timer {
+public:
+    Timer(Executor& executor);
+    ~Timer();
+
+private:
+    void timer_handler(const boost::system::error_code& error);
+
+    Executor& executor;
+    boost::shared_ptr<boost::asio::io_context> io_context_;
+    boost::shared_ptr<boost::asio::deadline_timer> timer_;
+    boost::shared_ptr<boost::thread> thread_;
+};
+
 #endif //CPPREADY_TRADER_GO_AUTOTRADER_H

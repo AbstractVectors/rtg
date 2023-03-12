@@ -240,32 +240,28 @@ void OrderBook::updateHistSpreads(ReadyTraderGo::Instrument instrument,
             bidSpreadsQueue.pop();
             bidSpreads[removed.first] -= removed.second;
         }
-        askKeyIndex.clear();
-        bidKeyIndex.clear();
         // Calculate prefix sum
         askSpreadPrefixSum[0] = askSpreads.begin()->second, bidSpreadPrefixSum[0] = bidSpreads.begin()->second;
         auto askIt = askSpreads.begin();
-        askKeyIndex[askIt->first] = 0;
         askIt++;
         for (int i = 1; i < askSpreads.size(); i++, askIt++) {
-            askKeyIndex[askIt->first] = i;
             askSpreadPrefixSum[i] = askSpreadPrefixSum[i-1] + askIt->second;
         }
         auto bidIt = bidSpreads.begin();
-        bidKeyIndex[bidIt->first] = 0;
         bidIt++;
         for (int i = 1; i < bidSpreads.size(); i++, bidIt++) {
-            bidKeyIndex[bidIt->first] = i;
             bidSpreadPrefixSum[i] = bidSpreadPrefixSum[i-1] + bidIt->second;
         }
-    } else if (instrument == ReadyTraderGo::Instrument::ETF) {
+    } else if (instrument == ReadyTraderGo::Instrument::FUTURE) {
         double askSpreadSum = 0.0, bidSpreadSum = 0.0;
-        ll askVolume = 0, bidVolume = 0;
+        double askVolume = 0, bidVolume = 0;
         ll bidAskSpread = (ll) askPrices[0] - (ll) bidPrices[0];
-        ll midPrice = bidPrices[0] + bidAskSpread / 2;
+        double midPrice = bidPrices[0] + bidAskSpread / 2.0;
         for (int i = 0; i < ReadyTraderGo::TOP_LEVEL_COUNT; i++) {
             askSpreadSum += (askPrices[i] - midPrice) * askVolumes[i];
+            askVolume += askVolumes[i];
             bidSpreadSum += (midPrice - bidPrices[i]) * bidVolumes[i];
+            bidVolume += bidVolumes[i];
         }
         volumeWeightedAskSpread = askSpreadSum / askVolume;
         volumeWeightedBidSpread = bidSpreadSum / bidVolume;
@@ -274,29 +270,39 @@ void OrderBook::updateHistSpreads(ReadyTraderGo::Instrument instrument,
 
 ll OrderBook::calcOptimalSpread(Spread side) {
     if (side == Spread::ASK) {
-        return ternarySearch(volumeWeightedAskSpread, askSpreads, askSpreadPrefixSum, askKeyIndex);
+        return search(volumeWeightedAskSpread, askSpreads, askSpreadPrefixSum);
     } else if (side == Spread::BID) {
-        return ternarySearch(volumeWeightedBidSpread, bidSpreads, bidSpreadPrefixSum, bidKeyIndex);
+        return search(volumeWeightedBidSpread, bidSpreads, bidSpreadPrefixSum);
     }
 }
 
-ll OrderBook::ternarySearch(double hedgingCost, std::map<ll, ll>& spreads, std::array<ll, 100>& spreadPrefixSum, std::unordered_map<ll, ll>& spreadIndex) const {
-    int lo = 0, hi = spreads.end()->first;
-    while (hi - lo > 1) {
-        int mid = (hi + lo)>>1;
-        if (calcSpreadEV(mid, hedgingCost, spreads, spreadPrefixSum, spreadIndex) > calcSpreadEV(mid + 1, hedgingCost, spreads, spreadPrefixSum, spreadIndex)) {
-            hi = mid;
-        } else {
-            lo = mid;
-        }
+ll OrderBook::search(double hedgingCost, std::map<ll, ll>& spreads, std::array<ll, 100>& spreadPrefixSum) const {
+    if (!spreads.size()) return -1;
+    auto it = spreads.begin();
+    ll totalVolume = spreadPrefixSum[spreads.size() - 1];
+    double maxEV = calcSpreadEV(it->first, hedgingCost, totalVolume, 0);
+    double newEV;
+    ++it;
+    for (int i = 1; i < spreads.size(); i++, it++) {
+        newEV = calcSpreadEV(it->first, hedgingCost, totalVolume, spreadPrefixSum[i-1]);
+        if (newEV < maxEV) break;
+        maxEV = newEV;
     }
-    return lo + 1;
+    std::cout << maxEV << std::endl;
+    return (--it)->first;
 }
 
-double OrderBook::calcSpreadEV(ll spread, double hedgingCost, std::map<ll, ll>& spreads, std::array<ll, 100>& spreadPrefixSum, std::unordered_map<ll, ll>& spreadIndex) const {
-    if (!spreads.size()) return 0.0;
-    auto it = spreads.lower_bound(spread);
-    int index = spreadIndex[it->first];
-    double fillProbability = ((double) spreadPrefixSum[spreads.size() - 1] - spreadPrefixSum[index] - it->second) / ((double) spreadPrefixSum[spreads.size() - 1]);
-    return fillProbability * (spread - hedgingCost + (midPrice + spread) * MAKER_FEE);
+double OrderBook::calcSpreadEV(ll spread, double hedgingCost, ll totalVolume, ll excludedVolume) const {
+        double fillProbability = ((double) totalVolume - excludedVolume) / ((double) totalVolume);
+        return fillProbability * (spread - hedgingCost + (midPrice + spread) * MAKER_FEE);
 }
+
+/*
+Timer::Timer(Executor& executor_) : executor(executor_)
+{
+    io_context_.reset(new boost::asio::io_context);
+    timer_.reset(new boost::asio::deadline_timer(*io_context_, boost::posix_time::seconds(1)));
+    timer_.async_wait(boost::bind(&Timer::timer_handler, this, boost::asio::placeholders::error));
+    thread_.reset(new boost::thread(boost::bind(&boost::asio::io_context::run, io_context_)));
+}
+*/
