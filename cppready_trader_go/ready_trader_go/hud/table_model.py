@@ -15,6 +15,7 @@
 #     You should have received a copy of the GNU Affero General Public
 #     License along with Ready Trader Go.  If not, see
 #     <https://www.gnu.org/licenses/>.
+import time
 import collections
 
 from typing import Any, Dict, List, Optional, Tuple
@@ -462,6 +463,8 @@ class ProfitLossTableModel(BaseTableModel):
         row = self.__teams[team]
         self.__profits[row][1:] = (etf_position, fut_position, profit - account_balance, account_balance + total_fees,
                                    -total_fees, profit)
+		with open('data.csv', 'a') as file:
+			file.write('{},{},{},{},{},{},{}\n'.format(time.time(), etf_position, fut_position, profit - account_balance, account_balance + total_fees, -total_fees, profit))
         self.dataChanged.emit(self.createIndex(row, 1), self.createIndex(row, len(self._COLUMN_NAMES) - 1))
 
 
