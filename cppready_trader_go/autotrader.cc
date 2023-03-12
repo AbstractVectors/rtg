@@ -33,6 +33,7 @@ constexpr int TICK_SIZE_IN_CENTS = 100;
 constexpr int MIN_BID_NEARST_TICK = (MINIMUM_BID + TICK_SIZE_IN_CENTS) / TICK_SIZE_IN_CENTS * TICK_SIZE_IN_CENTS;
 constexpr int MAX_ASK_NEAREST_TICK = MAXIMUM_ASK / TICK_SIZE_IN_CENTS * TICK_SIZE_IN_CENTS;
 constexpr double MAKER_FEE = 0.01;
+OrderBook orderbook;
 
 AutoTrader::AutoTrader(boost::asio::io_context& context) : BaseAutoTrader(context)
 {
@@ -69,44 +70,38 @@ void AutoTrader::OrderBookMessageHandler(Instrument instrument,
                                          const std::array<unsigned long, TOP_LEVEL_COUNT>& bidPrices,
                                          const std::array<unsigned long, TOP_LEVEL_COUNT>& bidVolumes)
 {
-    RLOG(LG_AT, LogLevel::LL_INFO) << "order book received for " << instrument << " instrument"
-                                   << ": ask prices: " << askPrices[0]
-                                   << "; ask volumes: " << askVolumes[0]
-                                   << "; bid prices: " << bidPrices[0]
-                                   << "; bid volumes: " << bidVolumes[0];
-
-    if (instrument == Instrument::FUTURE)
-    {
-        unsigned long priceAdjustment = - (mPosition / LOT_SIZE) * TICK_SIZE_IN_CENTS;
-        unsigned long newAskPrice = (askPrices[0] != 0) ? askPrices[0] + priceAdjustment : 0;
-        unsigned long newBidPrice = (bidPrices[0] != 0) ? bidPrices[0] + priceAdjustment : 0;
-
-        if (mAskId != 0 && newAskPrice != 0 && newAskPrice != mAskPrice)
-        {
-            SendCancelOrder(mAskId);
-            mAskId = 0;
-        }
-        if (mBidId != 0 && newBidPrice != 0 && newBidPrice != mBidPrice)
-        {
-            SendCancelOrder(mBidId);
-            mBidId = 0;
-        }
-
-        if (mAskId == 0 && newAskPrice != 0 && mPosition > -POSITION_LIMIT)
-        {
-            mAskId = mNextMessageId++;
-            mAskPrice = newAskPrice;
-            SendInsertOrder(mAskId, Side::SELL, newAskPrice, LOT_SIZE, Lifespan::GOOD_FOR_DAY);
-            mAsks.emplace(mAskId);
-        }
-        if (mBidId == 0 && newBidPrice != 0 && mPosition < POSITION_LIMIT)
-        {
-            mBidId = mNextMessageId++;
-            mBidPrice = newBidPrice;
-            SendInsertOrder(mBidId, Side::BUY, newBidPrice, LOT_SIZE, Lifespan::GOOD_FOR_DAY);
-            mBids.emplace(mBidId);
-        }
+    RLOG(LG_AT, LogLevel::LL_INFO) << "order book received for " << instrument << " instrument";
+    for (int i = 0; i < ReadyTraderGo::TOP_LEVEL_COUNT; i++) {
+        RLOG(LG_AT, LogLevel::LL_INFO) << askPrices[i] << ", ";
     }
+    RLOG(LG_AT, LogLevel::LL_INFO) << "; ask volumes: ";
+    for (int i = 0; i < ReadyTraderGo::TOP_LEVEL_COUNT; i++) {
+        RLOG(LG_AT, LogLevel::LL_INFO) << askVolumes[i] << ", ";
+    }
+    RLOG(LG_AT, LogLevel::LL_INFO) << "; bid prices: ";
+    for (int i = 0; i < ReadyTraderGo::TOP_LEVEL_COUNT; i++) {
+        RLOG(LG_AT, LogLevel::LL_INFO) << bidPrices[i] << ", ";
+    }
+    RLOG(LG_AT, LogLevel::LL_INFO) << "; bid volumes: ";
+    for (int i = 0; i < ReadyTraderGo::TOP_LEVEL_COUNT; i++) {
+        RLOG(LG_AT, LogLevel::LL_INFO) << bidVolumes[i] << ", ";
+    }
+    orderbook.updateHistSpreads(instrument,
+        askPrices,
+        askVolumes,
+        bidPrices,
+        bidVolumes);
+    ll ask = orderbook.calcOptimalSpread(OrderBook::Spread::ASK) + orderbook.midPrice;
+    mAskId = mNextMessageId++;
+    mAskPrice = ask;
+    SendInsertOrder(mAskId, Side::SELL, ask, LOT_SIZE, Lifespan::GOOD_FOR_DAY);
+    mAsks.emplace(mAskId);
+
+    ll bid = orderbook.calcOptimalSpread(OrderBook::Spread::BID) + orderbook.midPrice;
+    mBidId = mNextMessageId++;
+    mBidPrice = bid;
+    SendInsertOrder(mNextMessageId++, Side::BUY, bid, LOT_SIZE, Lifespan::GOOD_FOR_DAY);
+    mBids.emplace(mBidId);
 }
 
 void AutoTrader::OrderFilledMessageHandler(unsigned long clientOrderId,
@@ -156,10 +151,38 @@ void AutoTrader::TradeTicksMessageHandler(Instrument instrument,
                                           const std::array<unsigned long, TOP_LEVEL_COUNT>& bidVolumes)
 {
     RLOG(LG_AT, LogLevel::LL_INFO) << "trade ticks received for " << instrument << " instrument"
-                                   << ": ask prices: " << askPrices[0]
-                                   << "; ask volumes: " << askVolumes[0]
-                                   << "; bid prices: " << bidPrices[0]
-                                   << "; bid volumes: " << bidVolumes[0];
+                                   << ": ask prices: ";
+    for (int i = 0; i < ReadyTraderGo::TOP_LEVEL_COUNT; i++) {
+        RLOG(LG_AT, LogLevel::LL_INFO) << askPrices[i] << ", ";
+    }
+    RLOG(LG_AT, LogLevel::LL_INFO) << "; ask volumes: ";
+    for (int i = 0; i < ReadyTraderGo::TOP_LEVEL_COUNT; i++) {
+        RLOG(LG_AT, LogLevel::LL_INFO) << askVolumes[i] << ", ";
+    }
+    RLOG(LG_AT, LogLevel::LL_INFO) << "; bid prices: ";
+    for (int i = 0; i < ReadyTraderGo::TOP_LEVEL_COUNT; i++) {
+        RLOG(LG_AT, LogLevel::LL_INFO) << bidPrices[i] << ", ";
+    }
+    RLOG(LG_AT, LogLevel::LL_INFO) << "; bid volumes: ";
+    for (int i = 0; i < ReadyTraderGo::TOP_LEVEL_COUNT; i++) {
+        RLOG(LG_AT, LogLevel::LL_INFO) << bidVolumes[i] << ", ";
+    }
+    orderbook.updateHistSpreads(instrument,
+        askPrices,
+        askVolumes,
+        bidPrices,
+        bidVolumes);
+    ll ask = orderbook.calcOptimalSpread(OrderBook::Spread::ASK) + orderbook.midPrice;
+    mAskId = mNextMessageId++;
+    mAskPrice = ask;
+    SendInsertOrder(mAskId, Side::SELL, ask, LOT_SIZE, Lifespan::GOOD_FOR_DAY);
+    mAsks.emplace(mAskId);
+
+    ll bid = orderbook.calcOptimalSpread(OrderBook::Spread::BID) + orderbook.midPrice;
+    mBidId = mNextMessageId++;
+    mBidPrice = bid;
+    SendInsertOrder(mNextMessageId++, Side::BUY, bid, LOT_SIZE, Lifespan::GOOD_FOR_DAY);
+    mBids.emplace(mBidId);
 }
 
 
@@ -273,6 +296,8 @@ ll OrderBook::calcOptimalSpread(Spread side) {
         return search(volumeWeightedAskSpread, askSpreads, askSpreadPrefixSum);
     } else if (side == Spread::BID) {
         return search(volumeWeightedBidSpread, bidSpreads, bidSpreadPrefixSum);
+    } else {
+        return -1;
     }
 }
 
