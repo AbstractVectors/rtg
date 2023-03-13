@@ -16,6 +16,9 @@
 //     License along with Ready Trader Go.  If not, see
 //     <https://www.gnu.org/licenses/>.
 #include <array>
+#include <thread>
+#include <chrono>
+#include <bits/stdc++.h>
 
 #include <boost/asio/io_context.hpp>
 
@@ -27,12 +30,13 @@ using namespace ReadyTraderGo;
 
 RTG_INLINE_GLOBAL_LOGGER_WITH_CHANNEL(LG_AT, "AUTO")
 
-constexpr int LOT_SIZE = 10;
-constexpr int POSITION_LIMIT = 100;
+constexpr int LOT_SIZE = 30;
+constexpr int POSITION_LIMIT = 50;
 constexpr int TICK_SIZE_IN_CENTS = 100;
 constexpr int MIN_BID_NEARST_TICK = (MINIMUM_BID + TICK_SIZE_IN_CENTS) / TICK_SIZE_IN_CENTS * TICK_SIZE_IN_CENTS;
 constexpr int MAX_ASK_NEAREST_TICK = MAXIMUM_ASK / TICK_SIZE_IN_CENTS * TICK_SIZE_IN_CENTS;
-constexpr double MAKER_FEE = 0.01;
+constexpr double MAKER_FEE = 0.0001;
+constexpr double MAX_DISLOCATION = 0.002;
 OrderBook orderbook;
 
 AutoTrader::AutoTrader(boost::asio::io_context& context) : BaseAutoTrader(context)
@@ -93,12 +97,12 @@ void AutoTrader::OrderBookMessageHandler(Instrument instrument,
         bidPrices,
         bidVolumes);
 
-    if (instrument == ReadyTraderGo::Instrument::ETF && orderbook.midPrice != -1) {
-        ll ask = orderbook.calcOptimalSpread(OrderBook::Spread::ASK) + orderbook.midPrice;
+    if (instrument == ReadyTraderGo::Instrument::ETF && orderbook.etfMidPrice != -1) {
+        ll ask = orderbook.calcOptimalSpread(OrderBook::Spread::ASK) + orderbook.etfMidPrice;
         ask = (ask / 100) * 100;
-        ll bid = orderbook.midPrice - orderbook.calcOptimalSpread(OrderBook::Spread::BID);
+        ll bid = orderbook.etfMidPrice - orderbook.calcOptimalSpread(OrderBook::Spread::BID);
         bid = (bid / 100) * 100;
-        std::cout << orderbook.midPrice << " " << bid << " " << ask << std::endl;
+        std::cout << mPosition << std::endl;
         if (mAskId != 0 && ask != 0 && ask != mAskPrice) {
             SendCancelOrder(mAskId);
             mAskId = 0;
@@ -107,17 +111,22 @@ void AutoTrader::OrderBookMessageHandler(Instrument instrument,
             SendCancelOrder(mBidId);
             mBidId = 0;
         }
-        
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
         if (mAskId == 0 && ask != 0 && mPosition > -POSITION_LIMIT) {
             mAskId = mNextMessageId++;
             mAskPrice = ask;
-            SendInsertOrder(mAskId, Side::SELL, ask, LOT_SIZE, Lifespan::GOOD_FOR_DAY);
+            SendInsertOrder(mAskId, Side::SELL, ask,
+                (LOT_SIZE < mPosition + POSITION_LIMIT) ? LOT_SIZE : mPosition + POSITION_LIMIT, 
+                Lifespan::GOOD_FOR_DAY);
             mAsks.emplace(mAskId);
         }
         if (mBidId == 0 && bid != 0 && mPosition < POSITION_LIMIT) {
             mBidId = mNextMessageId++;
             mBidPrice = bid;
-            SendInsertOrder(mBidId, Side::BUY, bid, LOT_SIZE, Lifespan::GOOD_FOR_DAY);
+            SendInsertOrder(mBidId, Side::BUY, bid,
+                (LOT_SIZE < POSITION_LIMIT - mPosition) ? LOT_SIZE : POSITION_LIMIT - mPosition,  
+                Lifespan::GOOD_FOR_DAY);
             mBids.emplace(mBidId);
         }
     }
@@ -169,11 +178,22 @@ void AutoTrader::TradeTicksMessageHandler(Instrument instrument,
                                           const std::array<unsigned long, TOP_LEVEL_COUNT>& bidPrices,
                                           const std::array<unsigned long, TOP_LEVEL_COUNT>& bidVolumes)
 {
-    RLOG(LG_AT, LogLevel::LL_INFO) << "order book received for " << instrument << " instrument"
-                                   << ": ask prices: " << askPrices[0]
-                                   << "; ask volumes: " << askVolumes[0]
-                                   << "; bid prices: " << bidPrices[0]
-                                   << "; bid volumes: " << bidVolumes[0];
+    RLOG(LG_AT, LogLevel::LL_INFO) << "order book received for " << instrument << " instrument";
+    for (int i = 0; i < ReadyTraderGo::TOP_LEVEL_COUNT; i++) {
+        RLOG(LG_AT, LogLevel::LL_INFO) << askPrices[i] << ", ";
+    }
+    RLOG(LG_AT, LogLevel::LL_INFO) << "; ask volumes: ";
+    for (int i = 0; i < ReadyTraderGo::TOP_LEVEL_COUNT; i++) {
+        RLOG(LG_AT, LogLevel::LL_INFO) << askVolumes[i] << ", ";
+    }
+    RLOG(LG_AT, LogLevel::LL_INFO) << "; bid prices: ";
+    for (int i = 0; i < ReadyTraderGo::TOP_LEVEL_COUNT; i++) {
+        RLOG(LG_AT, LogLevel::LL_INFO) << bidPrices[i] << ", ";
+    }
+    RLOG(LG_AT, LogLevel::LL_INFO) << "; bid volumes: ";
+    for (int i = 0; i < ReadyTraderGo::TOP_LEVEL_COUNT; i++) {
+        RLOG(LG_AT, LogLevel::LL_INFO) << bidVolumes[i] << ", ";
+    }
 
     orderbook.updateHistSpreads(instrument,
         askPrices,
@@ -237,19 +257,18 @@ void OrderBook::updateHistSpreads(ReadyTraderGo::Instrument instrument,
             const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidVolumes) {
     if (instrument == ReadyTraderGo::Instrument::ETF) {
         // Update spreads
-        std::cout << "ETFuck you" << std::endl;
         if (askPrices[0] && bidPrices[0]) {
             ll bidAskSpread = (ll) askPrices[0] - (ll) bidPrices[0];
-            midPrice = bidPrices[0] + bidAskSpread / 2;
+            etfMidPrice = bidPrices[0] + bidAskSpread / 2;
         }
         for (int i = 0; i < ReadyTraderGo::TOP_LEVEL_COUNT; i++) {
             if (askPrices[i]) {
-                askSpreads[(ll) askPrices[i] - midPrice] += askVolumes[i];
-                askSpreadsQueue.push({(ll) askPrices[i] - midPrice, (ll) askVolumes[i]});
+                askSpreads[(ll) askPrices[i] - etfMidPrice] += askVolumes[i];
+                askSpreadsQueue.push({(ll) askPrices[i] - etfMidPrice, (ll) askVolumes[i]});
             }
             if (bidPrices[i]) {
-                bidSpreads[midPrice - (ll) bidPrices[i]] += bidVolumes[i];
-                bidSpreadsQueue.push({midPrice - (ll) bidPrices[i], (ll) bidVolumes[i]});
+                bidSpreads[etfMidPrice - (ll) bidPrices[i]] += bidVolumes[i];
+                bidSpreadsQueue.push({etfMidPrice - (ll) bidPrices[i], (ll) bidVolumes[i]});
             }
         }
         while (askSpreadsQueue.size() > 100) {
@@ -279,15 +298,16 @@ void OrderBook::updateHistSpreads(ReadyTraderGo::Instrument instrument,
             }
         }
     } else if (instrument == ReadyTraderGo::Instrument::FUTURE) {
-        std::cout << "FutureDick" << std::endl;
         double askSpreadSum = 0.0, bidSpreadSum = 0.0;
         double askVolume = 0, bidVolume = 0;
-        ll bidAskSpread = (ll) askPrices[0] - (ll) bidPrices[0];
-        double midPrice = bidPrices[0] + bidAskSpread / 2.0;
+        if (askPrices[0] && bidPrices[0]) {
+            ll bidAskSpread = (ll) askPrices[0] - (ll) bidPrices[0];
+            futMidPrice = bidPrices[0] + bidAskSpread / 2;
+        }
         for (int i = 0; i < ReadyTraderGo::TOP_LEVEL_COUNT; i++) {
-            askSpreadSum += (askPrices[i] - midPrice) * askVolumes[i];
+            askSpreadSum += (askPrices[i] - futMidPrice) * askVolumes[i];
             askVolume += askVolumes[i];
-            bidSpreadSum += (midPrice - bidPrices[i]) * bidVolumes[i];
+            bidSpreadSum += (futMidPrice - bidPrices[i]) * bidVolumes[i];
             bidVolume += bidVolumes[i];
         }
         if (askVolume) volumeWeightedAskSpread = askSpreadSum / askVolume;
@@ -296,12 +316,16 @@ void OrderBook::updateHistSpreads(ReadyTraderGo::Instrument instrument,
 }
 
 ll OrderBook::calcOptimalSpread(Spread side) {
-    if (side == Spread::ASK) {
-        std::cout << "ask: ";
-        return search(volumeWeightedAskSpread, askSpreads, askSpreadPrefixSum);
-    } else if (side == Spread::BID) {
-        std::cout << "bid: ";
-        return search(volumeWeightedBidSpread, bidSpreads, bidSpreadPrefixSum);
+    if (futMidPrice != -1 && etfMidPrice != -1) {
+        if (side == Spread::ASK) {
+            ll rawSpread = search(volumeWeightedAskSpread, askSpreads, askSpreadPrefixSum);
+            double dislocationFactor = (((double) (futMidPrice - etfMidPrice) / etfMidPrice)) / MAX_DISLOCATION;
+            return rawSpread + rawSpread * dislocationFactor;
+        } else if (side == Spread::BID) {
+            ll rawSpread = search(volumeWeightedBidSpread, bidSpreads, bidSpreadPrefixSum);
+            double dislocationFactor = (((double) (futMidPrice - etfMidPrice) / etfMidPrice)) / MAX_DISLOCATION;
+            return rawSpread - rawSpread * dislocationFactor;
+        }
     } else {
         return -1;
     }
@@ -321,13 +345,12 @@ ll OrderBook::search(double hedgingCost, std::map<ll, ll>& spreads, std::array<l
         if (newEV < maxEV) break;
         maxEV = newEV;
     }
-    std::cout << maxEV << " " << it->first << std::endl;
     return (--it)->first;
 }
 
 double OrderBook::calcSpreadEV(ll spread, double hedgingCost, ll totalVolume, ll excludedVolume) const {
         double fillProbability = ((double) totalVolume - excludedVolume) / ((double) totalVolume);
-        return fillProbability * (spread - hedgingCost + (midPrice + spread) * MAKER_FEE);
+        return fillProbability * (spread - hedgingCost + (etfMidPrice + spread) * MAKER_FEE);
 }
 
 /*

@@ -122,11 +122,12 @@ class OrderBook {
         enum class Spread : unsigned char {BID, ASK};
         std::map<ul, ul, descComp> spotBids, futBids;
         // For ETF
-        ll midPrice = -1;
+        ll etfMidPrice = -1;
         std::map<ll, ll> bidSpreads, askSpreads;            
         std::queue<std::pair<ll, ll>> bidSpreadsQueue, askSpreadsQueue;
         std::array<ll, 100> bidSpreadPrefixSum, askSpreadPrefixSum;
         // For FUTURE
+        ll futMidPrice = -1;
         double volumeWeightedBidSpread=500, volumeWeightedAskSpread=500;
 
         void updateOnOrderBook(ReadyTraderGo::Instrument instrument,
