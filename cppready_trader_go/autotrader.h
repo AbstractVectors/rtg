@@ -32,6 +32,7 @@
 
 #define ul unsigned long
 #define ll long long
+#define ld long double
 
 class AutoTrader : public ReadyTraderGo::BaseAutoTrader
 {
@@ -98,6 +99,8 @@ public:
                                   const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidPrices,
                                   const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidVolumes) override;
 
+    void placeOrders();
+
 private:
     unsigned long mNextMessageId = 1;
     unsigned long mAskId = 0;
@@ -109,51 +112,86 @@ private:
     std::unordered_set<unsigned long> mBids;
 };
 
-class OrderBook {
+class Stats {
     public:
-        bool roundFlag = 0;
-        std::map<ul, ul> spotAsks, futAsks;
-        class descComp {
-            public:
-                bool operator()(ul a, ul b) const {
-                    return a > b;
-                }
-        };
-        enum class Spread : unsigned char {BID, ASK};
-        std::map<ul, ul, descComp> spotBids, futBids;
-        // For ETF
-        ll etfMidPrice = -1;
-        std::map<ll, ll> bidSpreads, askSpreads;            
-        std::queue<std::pair<ll, ll>> bidSpreadsQueue, askSpreadsQueue;
-        std::array<ll, 100> bidSpreadPrefixSum, askSpreadPrefixSum;
-        // For FUTURE
-        ll futMidPrice = -1;
-        double volumeWeightedBidSpread=500, volumeWeightedAskSpread=500;
+        std::string name;
+        int trailingLimit = INT_MAX;
+        double count = 0, sum = 0, sumSquared = 0, mean = 0, sd = 0;
+        std::queue<double> spreads;
 
-        void updateOnOrderBook(ReadyTraderGo::Instrument instrument,
-            const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& askPrices,
-            const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& askVolumes,
-            const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidPrices,
-            const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidVolumes); 
+        Stats(std::string name) {
+            this->name = name;
+        }
 
-        void updateOnTick(ReadyTraderGo::Instrument instrument,
-            const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& askPrices,
-            const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& askVolumes,
-            const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidPrices,
-            const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidVolumes);
+        double calculateStandardDeviation() {
+            return std::sqrt((sumSquared - 2 * mean * sum + mean * mean * count) / count);
+        }
 
-        void updateHistSpreads(ReadyTraderGo::Instrument instrument,
-            const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& askPrices,
-            const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& askVolumes,
-            const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidPrices,
-            const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidVolumes);
-        
-        ll calcOptimalSpread(Spread side);
+        void add(double newVal) {
+            std::cout << name << newVal << std::endl;
+            count++;
+            sumSquared += newVal * newVal;
+            sum += newVal;
+            mean = sum / count;
+            sd = calculateStandardDeviation();
+            spreads.push(newVal);
+            if (count > trailingLimit) dequeue();
+        }
 
-        ll search(double hedgingCost, std::map<ll, ll>& spreads, std::array<ll, 100>& spreadPrefixSum) const;
-
-        double calcSpreadEV(ll spread, double hedgingCost, ll totalVolume, ll excludedVolume) const;
+        void dequeue() {
+            double oldVal = spreads.front();
+            spreads.pop();
+            count--;
+            sum -= oldVal;
+            sumSquared -= oldVal * oldVal;
+            mean = sum / count;
+            sd = calculateStandardDeviation();
+        }
 };
 
+class OrderBook {
+public:
+    std::map<ul, ul> spotAsks, futAsks;
+    class descComp {
+    public:
+        bool operator()(ul a, ul b) const {
+            return a > b;
+        }
+    };
+    enum class Spread : unsigned char {BID, ASK};
+    std::map<ul, ul, descComp> spotBids, futBids;
+    // For ETF
+    double etfMidPrice;
+    Stats askStats{"askStats: "}, bidStats{"bidStats: "}, askVolumeStats{"askVolumeStats: "}, bidVolumeStats{"bidVolumeStats: "};
+    std::map<ll, ll> bidSpreads, askSpreads;
+    // For FUTURE
+    ll futMidPrice = -1;
+    double volumeWeightedBidSpread=-1, volumeWeightedAskSpread=-1;
+
+    void updateVolumePercentileSpread();
+
+    void updateSpreads(ReadyTraderGo::Instrument instrument,
+                       const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& askPrices,
+                       const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& askVolumes,
+                       const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidPrices,
+                       const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidVolumes);
+
+    void updatePrices(ReadyTraderGo::Instrument instrument,
+                      const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& askPrices,
+                      const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& askVolumes,
+                      const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidPrices,
+                      const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidVolumes);
+
+    ll calcOptimalSpread(Spread side);
+
+    ll ternarySearch(Spread side, double hedgingCost) const;
+
+    double calcSpreadEV(Spread side, double spread, double hedgingCost) const;
+
+    static double normalCDF(double x) // Phi(-∞, x) aka N(x)
+    {
+        return std::erfc(-x / std::sqrt(2)) / 2;
+    }
+};
 
 #endif //CPPREADY_TRADER_GO_AUTOTRADER_H
